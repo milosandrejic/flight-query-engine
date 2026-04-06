@@ -4,13 +4,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.flight_query_engine.database.session import engine
+from src.flight_query_engine.api.routes.flight_search import router as flight_search_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
-    await engine.dispose()
 
 app = FastAPI(
     title="Flight Query Engine",
@@ -28,6 +27,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(flight_search_router)
 
 @app.get("/health")
 async def health() -> dict:

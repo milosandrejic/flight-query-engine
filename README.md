@@ -1,31 +1,26 @@
 # Flight Query Engine
 
-AI-powered Flight Query Engine with Structured Parsing and API Orchestration (FastAPI + LLM)
+AI-powered flight search — send a natural language query, get structured flight results back.
+
+Built with FastAPI, OpenAI structured outputs, and the Duffel flights API.
 
 ## Stack
 
 - **FastAPI** — async web framework
-- **PostgreSQL** — database (SQLAlchemy async + Alembic)
-- **OpenAI** — natural language parsing (structured outputs)
-- **Duffel API** — flight search (via httpx)
-- **structlog** — structured logging
+- **OpenAI** — natural language parsing (structured outputs with Pydantic)
+- **Duffel API** — flight search (via httpx, no SDK)
 - **Pydantic** — validation, serialization, OpenAPI docs
 
 ## Quick Start
 
 ```bash
-# Start database
-docker compose -f docker-compose.dev.yml up -d
-
 # Setup
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env with your OPENAI_API_KEY and DUFFEL_API_KEY
+
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-
-# Run migrations
-alembic upgrade head
 
 # Run
 uvicorn src.flight_query_engine.main:app --reload
@@ -36,13 +31,17 @@ uvicorn src.flight_query_engine.main:app --reload
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check |
-| POST | `/chat` | Natural language flight search |
-| GET | `/searches/history?user_id=...` | User search history |
-| GET | `/searches/popular` | Popular routes |
+| POST | `/search` | Natural language flight search |
 
 ## API Docs
 
 Visit `http://localhost:8000/docs` for interactive Swagger UI.
+
+## Docker
+
+```bash
+docker compose up --build
+```
 
 ## Scripts
 
@@ -50,20 +49,11 @@ Visit `http://localhost:8000/docs` for interactive Swagger UI.
 # Development server
 uvicorn src.flight_query_engine.main:app --reload
 
-# Run tests
-pytest
-
 # Lint
 ruff check src/ tests/
 
-# Type check
-mypy src/
-
-# Create migration
-alembic revision --autogenerate -m "description"
-
-# Apply migrations
-alembic upgrade head
+# Run tests
+pytest
 ```
 
 ## References
