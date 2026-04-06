@@ -11,9 +11,9 @@ Python rewrite of [flight-search-ai](https://github.com/milosandrejic/flight-sea
 - **Commit:** `feat: config, structured logging, health endpoint`
 
 ### Step 2: Database + ORM Model
-- [ ] `database/session.py` — async SQLAlchemy engine + session factory
-- [ ] `models/search_history.py` — SearchHistory SQLAlchemy model
-- [ ] `api/deps.py` — FastAPI dependency for DB session
+- [x] `database/session.py` — async SQLAlchemy engine + session factory
+- [x] `models/search_history.py` — SearchHistory SQLAlchemy model
+- [x] `api/deps.py` — FastAPI dependency for DB session
 - **Commit:** `feat: async database setup and search history model`
 
 ### Step 3: Pydantic Schemas + Custom Exceptions
