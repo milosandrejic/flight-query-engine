@@ -1,8 +1,9 @@
 from datetime import date
 
-from openai import AsyncOpenAI
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 
 from src.flight_query_engine.config import settings
+from src.flight_query_engine.exceptions import OpenAIServiceError
 from src.flight_query_engine.schemas.flight_search import ParsedFlightQuery
 
 client = AsyncOpenAI(api_key=settings.openai_api_key)
@@ -43,17 +44,26 @@ async def parse_flight_query(user_query: str) -> ParsedFlightQuery:
     Uses OpenAI structured outputs — the SDK enforces the Pydantic schema
     so we get a validated ParsedFlightQuery back directly, no JSON parsing.
     """
-    completion = await client.beta.chat.completions.parse(
-        model="gpt-4o-mini",
-        temperature=0.3,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_query},
-        ],
-        response_format=ParsedFlightQuery,
-    )
+    try:
+        completion = await client.beta.chat.completions.parse(
+            model="gpt-4o-mini",
+            temperature=0.3,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_query},
+            ],
+            response_format=ParsedFlightQuery,
+        )
+    except APITimeoutError:
+        raise OpenAIServiceError("Query parsing timed out, please try again") from None
+    except RateLimitError:
+        raise OpenAIServiceError("Service is busy, please try again later") from None
+    except APIConnectionError:
+        raise OpenAIServiceError("Query parsing is temporarily unavailable") from None
+    except Exception as exc:
+        raise OpenAIServiceError("Failed to parse your query") from exc
+
     result = completion.choices[0].message.parsed
     if result is None:
-        msg = "OpenAI returned empty parsed result"
-        raise ValueError(msg)
+        raise OpenAIServiceError("Could not understand your query, try rephrasing")
     return result

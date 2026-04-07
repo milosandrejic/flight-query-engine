@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import httpx
 
 from src.flight_query_engine.config import settings
+from src.flight_query_engine.exceptions import DuffelServiceError
 from src.flight_query_engine.schemas.flight_search import (
     FlightResult,
     FlightSegment,
@@ -136,21 +137,34 @@ async def search_flights(query: ParsedFlightQuery) -> list[FlightResult]:
     if max_connections is not None:
         payload["data"]["max_connections"] = max_connections
 
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
-        # 1. Create offer request
-        resp = await client.post("/air/offer_requests", json=payload, timeout=30)
-        resp.raise_for_status()
-        offer_request = resp.json()["data"]
+    try:
+        async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+            # 1. Create offer request
+            resp = await client.post("/air/offer_requests", json=payload, timeout=30)
+            resp.raise_for_status()
+            offer_request = resp.json()["data"]
 
-        # 2. List offers
-        sort = "total_duration" if query.sort_by == "duration" else "total_amount"
-        resp = await client.get(
-            "/air/offers",
-            params={"offer_request_id": offer_request["id"], "sort": sort},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        offers = resp.json()["data"]
+            # 2. List offers
+            sort = "total_duration" if query.sort_by == "duration" else "total_amount"
+            resp = await client.get(
+                "/air/offers",
+                params={"offer_request_id": offer_request["id"], "sort": sort},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            offers = resp.json()["data"]
+    except httpx.TimeoutException:
+        raise DuffelServiceError("Flight search timed out, please try again") from None
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 401:
+            raise DuffelServiceError("Flight search is misconfigured") from None
+        if exc.response.status_code == 422:
+            raise DuffelServiceError("Invalid search parameters") from None
+        raise DuffelServiceError("Flight search temporarily unavailable") from exc
+    except httpx.RequestError:
+        raise DuffelServiceError("Flight search is temporarily unavailable") from None
+    except KeyError as exc:
+        raise DuffelServiceError("Unexpected response from flight search") from exc
 
     # 3. Filter
     if query.airlines:
