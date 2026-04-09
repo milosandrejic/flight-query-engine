@@ -34,3 +34,10 @@ class SessionNotFoundError(FlightQueryEngineError):
 
     def __init__(self, message: str = "Session not found"):
         super().__init__(message, error_type="session_error", status_code=404)
+
+
+class OfferNotFoundError(FlightQueryEngineError):
+    """Requested offer does not exist or has expired."""
+
+    def __init__(self, message: str = "Offer not found or expired"):
+        super().__init__(message, error_type="offer_error", status_code=404)

@@ -10,9 +10,10 @@ from src.flight_query_engine.schemas.flight_search import (
     FlightSearchResponse,
     FollowUpRequest,
     FollowUpResponse,
+    OfferDetailsResponse,
     SearchMetadata,
 )
-from src.flight_query_engine.services.duffel_service import search_flights
+from src.flight_query_engine.services.duffel_service import get_offer, search_flights
 from src.flight_query_engine.services.openai_service import parse_flight_query, parse_follow_up_query
 from src.flight_query_engine.services.session_store import add_turn, create_session, get_session
 
@@ -69,3 +70,8 @@ async def follow_up_search(session_id: str, body: FollowUpRequest) -> FollowUpRe
             timestamp=datetime.now(UTC).isoformat(),
         ),
     )
+
+
+@router.get("/flights/{offer_id}", response_model=OfferDetailsResponse)
+async def flight_details(offer_id: str) -> OfferDetailsResponse:
+    return await get_offer(offer_id)

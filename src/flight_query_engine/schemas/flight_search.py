@@ -100,3 +100,65 @@ class FollowUpResponse(BaseModel):
     parsed_query: ParsedFlightQuery
     results: list[FlightResult]
     metadata: SearchMetadata
+
+
+# --- Offer details ---
+
+
+class OfferCondition(BaseModel):
+    allowed: bool
+    penalty_amount: str | None = None
+    penalty_currency: str | None = None
+
+
+class OfferConditions(BaseModel):
+    change_before_departure: OfferCondition | None = None
+    refund_before_departure: OfferCondition | None = None
+
+
+class BaggageAllowance(BaseModel):
+    type: str
+    quantity: int
+
+
+class OfferPassenger(BaseModel):
+    id: str
+    type: str
+    baggages: list[BaggageAllowance] = []
+
+
+class OfferSliceSegment(BaseModel):
+    origin: str
+    destination: str
+    departing_at: str
+    arriving_at: str
+    carrier: str
+    carrier_name: str | None = None
+    flight_number: str
+    duration: str | None = None
+    aircraft: str | None = None
+
+
+class OfferSlice(BaseModel):
+    origin: str
+    destination: str
+    duration: str | None = None
+    segments: list[OfferSliceSegment]
+
+
+class PriceBreakdown(BaseModel):
+    total: float
+    base: float
+    tax: float | None = None
+    currency: str
+
+
+class OfferDetailsResponse(BaseModel):
+    id: str
+    price: PriceBreakdown
+    conditions: OfferConditions
+    slices: list[OfferSlice]
+    passengers: list[OfferPassenger]
+    expires_at: str
+    total_emissions_kg: str | None = None
+    owner_name: str | None = None

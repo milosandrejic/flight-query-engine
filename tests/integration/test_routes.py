@@ -3,11 +3,18 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.flight_query_engine.exceptions import DuffelServiceError, OpenAIServiceError
+from src.flight_query_engine.exceptions import DuffelServiceError, OfferNotFoundError, OpenAIServiceError
 from src.flight_query_engine.schemas.flight_search import (
     FlightResult,
     FlightSegment,
+    OfferCondition,
+    OfferConditions,
+    OfferDetailsResponse,
+    OfferPassenger,
+    OfferSlice,
+    OfferSliceSegment,
     Price,
+    PriceBreakdown,
 )
 from src.flight_query_engine.services.session_store import ConversationTurn, SessionData
 
@@ -291,3 +298,92 @@ class TestFollowUpEndpoint:
         assert resp2.status_code == 200
         assert resp1.json()["session_id"] == "sess-123"
         assert resp2.json()["session_id"] == "sess-123"
+
+
+class TestFlightDetailsEndpoint:
+    @pytest.fixture()
+    def mock_offer_response(self):
+        return OfferDetailsResponse(
+            id="off_123",
+            price=PriceBreakdown(total=450.0, base=409.20, tax=40.80, currency="GBP"),
+            conditions=OfferConditions(
+                change_before_departure=OfferCondition(
+                    allowed=True, penalty_amount="50.00", penalty_currency="GBP",
+                ),
+                refund_before_departure=OfferCondition(allowed=False),
+            ),
+            slices=[
+                OfferSlice(
+                    origin="JFK",
+                    destination="LHR",
+                    duration="PT7H00M",
+                    segments=[
+                        OfferSliceSegment(
+                            origin="JFK",
+                            destination="LHR",
+                            departing_at="2026-06-15T10:00:00",
+                            arriving_at="2026-06-15T22:00:00",
+                            carrier="BA",
+                            carrier_name="British Airways",
+                            flight_number="178",
+                            duration="PT7H00M",
+                            aircraft="Boeing 777-200",
+                        ),
+                    ],
+                ),
+            ],
+            passengers=[
+                OfferPassenger(id="pas_001", type="adult", baggages=[]),
+            ],
+            expires_at="2026-07-01T12:00:00Z",
+            total_emissions_kg="460",
+            owner_name="British Airways",
+        )
+
+    async def test_successful_details(self, test_client, mock_offer_response):
+        with patch(
+            "src.flight_query_engine.api.routes.flight_search.get_offer",
+            new_callable=AsyncMock,
+            return_value=mock_offer_response,
+        ):
+            resp = await test_client.get("/flights/off_123")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["id"] == "off_123"
+        assert body["price"]["total"] == 450.0
+        assert body["price"]["base"] == 409.20
+        assert body["price"]["tax"] == 40.80
+        assert body["conditions"]["change_before_departure"]["allowed"] is True
+        assert body["conditions"]["refund_before_departure"]["allowed"] is False
+        assert len(body["slices"]) == 1
+        assert body["slices"][0]["segments"][0]["carrier"] == "BA"
+        assert body["slices"][0]["segments"][0]["aircraft"] == "Boeing 777-200"
+        assert body["passengers"][0]["type"] == "adult"
+        assert body["total_emissions_kg"] == "460"
+        assert body["owner_name"] == "British Airways"
+
+    async def test_offer_not_found(self, test_client):
+        with patch(
+            "src.flight_query_engine.api.routes.flight_search.get_offer",
+            new_callable=AsyncMock,
+            side_effect=OfferNotFoundError(),
+        ):
+            resp = await test_client.get("/flights/off_nonexistent")
+
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["type"] == "offer_error"
+        assert "not found" in body["message"].lower()
+
+    async def test_duffel_error(self, test_client):
+        with patch(
+            "src.flight_query_engine.api.routes.flight_search.get_offer",
+            new_callable=AsyncMock,
+            side_effect=DuffelServiceError("Flight search temporarily unavailable"),
+        ):
+            resp = await test_client.get("/flights/off_123")
+
+        assert resp.status_code == 502
+        body = resp.json()
+        assert body["type"] == "search_error"

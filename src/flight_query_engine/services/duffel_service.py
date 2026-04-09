@@ -3,12 +3,20 @@ from datetime import datetime, timedelta
 import httpx
 
 from src.flight_query_engine.config import settings
-from src.flight_query_engine.exceptions import DuffelServiceError
+from src.flight_query_engine.exceptions import DuffelServiceError, OfferNotFoundError
 from src.flight_query_engine.schemas.flight_search import (
+    BaggageAllowance,
     FlightResult,
     FlightSegment,
+    OfferCondition,
+    OfferConditions,
+    OfferDetailsResponse,
+    OfferPassenger,
+    OfferSlice,
+    OfferSliceSegment,
     ParsedFlightQuery,
     Price,
+    PriceBreakdown,
 )
 
 BASE_URL = "https://api.duffel.com"
@@ -193,3 +201,98 @@ async def search_flights(query: ParsedFlightQuery) -> list[FlightResult]:
         ]
 
     return [_transform_offer(offer) for offer in offers[:MAX_RESULTS]]
+
+
+def _parse_condition(cond: dict | None) -> OfferCondition | None:
+    if cond is None:
+        return None
+    return OfferCondition(
+        allowed=cond.get("allowed", False),
+        penalty_amount=cond.get("penalty_amount"),
+        penalty_currency=cond.get("penalty_currency"),
+    )
+
+
+def _transform_offer_details(offer: dict) -> OfferDetailsResponse:
+    """Transform a full Duffel offer into our detail response."""
+    conditions_raw = offer.get("conditions", {})
+    conditions = OfferConditions(
+        change_before_departure=_parse_condition(conditions_raw.get("change_before_departure")),
+        refund_before_departure=_parse_condition(conditions_raw.get("refund_before_departure")),
+    )
+
+    slices = []
+    for s in offer.get("slices", []):
+        segments = [
+            OfferSliceSegment(
+                origin=seg["origin"]["iata_code"],
+                destination=seg["destination"]["iata_code"],
+                departing_at=seg["departing_at"],
+                arriving_at=seg["arriving_at"],
+                carrier=seg.get("marketing_carrier", {}).get("iata_code", ""),
+                carrier_name=seg.get("marketing_carrier", {}).get("name"),
+                flight_number=seg.get("marketing_carrier_flight_number", ""),
+                duration=seg.get("duration"),
+                aircraft=seg.get("aircraft", {}).get("name") if seg.get("aircraft") else None,
+            )
+            for seg in s.get("segments", [])
+        ]
+        slices.append(
+            OfferSlice(
+                origin=s.get("origin", {}).get("iata_code", segments[0].origin if segments else ""),
+                destination=s.get("destination", {}).get("iata_code", segments[-1].destination if segments else ""),
+                duration=s.get("duration"),
+                segments=segments,
+            ),
+        )
+
+    passengers = []
+    for p in offer.get("passengers", []):
+        baggages = [
+            BaggageAllowance(type=b["type"], quantity=b["quantity"])
+            for b in p.get("baggages", [])
+        ]
+        passengers.append(
+            OfferPassenger(id=p["id"], type=p.get("type", "adult"), baggages=baggages),
+        )
+
+    tax_amount = float(offer["tax_amount"]) if offer.get("tax_amount") else None
+
+    return OfferDetailsResponse(
+        id=offer["id"],
+        price=PriceBreakdown(
+            total=float(offer["total_amount"]),
+            base=float(offer["base_amount"]),
+            tax=tax_amount,
+            currency=offer["total_currency"],
+        ),
+        conditions=conditions,
+        slices=slices,
+        passengers=passengers,
+        expires_at=offer.get("expires_at", ""),
+        total_emissions_kg=offer.get("total_emissions_kg"),
+        owner_name=offer.get("owner", {}).get("name"),
+    )
+
+
+async def get_offer(offer_id: str) -> OfferDetailsResponse:
+    """Fetch a single offer from Duffel by ID."""
+    try:
+        async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+            resp = await client.get(f"/air/offers/{offer_id}", timeout=30)
+            resp.raise_for_status()
+            offer = resp.json()["data"]
+    except httpx.TimeoutException:
+        raise DuffelServiceError("Offer lookup timed out, please try again") from None
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise OfferNotFoundError() from None
+        if exc.response.status_code == 401:
+            raise DuffelServiceError("Flight search is misconfigured") from None
+        raise DuffelServiceError("Flight search temporarily unavailable") from exc
+    except httpx.RequestError:
+        raise DuffelServiceError("Flight search is temporarily unavailable") from None
+    except KeyError as exc:
+        raise DuffelServiceError("Unexpected response from flight search") from exc
+
+    return _transform_offer_details(offer)
