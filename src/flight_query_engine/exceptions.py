@@ -27,3 +27,10 @@ class ConfigError(FlightQueryEngineError):
 
     def __init__(self, message: str = "Server misconfigured"):
         super().__init__(message, error_type="server_error", status_code=500)
+
+
+class SessionNotFoundError(FlightQueryEngineError):
+    """Requested session does not exist."""
+
+    def __init__(self, message: str = "Session not found"):
+        super().__init__(message, error_type="session_error", status_code=404)

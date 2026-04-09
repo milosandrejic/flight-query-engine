@@ -5,6 +5,7 @@ from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitEr
 from src.flight_query_engine.config import settings
 from src.flight_query_engine.exceptions import OpenAIServiceError
 from src.flight_query_engine.schemas.flight_search import ParsedFlightQuery
+from src.flight_query_engine.services.session_store import ConversationTurn
 
 client = AsyncOpenAI(api_key=settings.openai_api_key)
 
@@ -52,6 +53,59 @@ async def parse_flight_query(user_query: str) -> ParsedFlightQuery:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_query},
             ],
+            response_format=ParsedFlightQuery,
+        )
+    except APITimeoutError:
+        raise OpenAIServiceError("Query parsing timed out, please try again") from None
+    except RateLimitError:
+        raise OpenAIServiceError("Service is busy, please try again later") from None
+    except APIConnectionError:
+        raise OpenAIServiceError("Query parsing is temporarily unavailable") from None
+    except Exception as exc:
+        raise OpenAIServiceError("Failed to parse your query") from exc
+
+    result = completion.choices[0].message.parsed
+    if result is None:
+        raise OpenAIServiceError("Could not understand your query, try rephrasing")
+    return result
+
+
+FOLLOW_UP_SYSTEM_PROMPT = SYSTEM_PROMPT + """
+
+You are modifying a previous flight search based on a follow-up request.
+Keep all parameters the same unless the follow-up explicitly changes them.
+"""
+
+
+def _build_follow_up_messages(
+    conversation_turns: list[ConversationTurn],
+    follow_up_query: str,
+) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = [
+        {"role": "system", "content": FOLLOW_UP_SYSTEM_PROMPT},
+    ]
+    for turn in conversation_turns:
+        messages.append({"role": "user", "content": turn.user_query})
+        messages.append({"role": "assistant", "content": turn.parsed_query.model_dump_json()})
+    messages.append({"role": "user", "content": follow_up_query})
+    return messages
+
+
+async def parse_follow_up_query(
+    conversation_turns: list[ConversationTurn],
+    follow_up_query: str,
+) -> ParsedFlightQuery:
+    """Parse a follow-up query using conversation history for context.
+
+    Sends the full conversation (past user queries + parsed results) to OpenAI
+    so it can produce a modified ParsedFlightQuery.
+    """
+    messages = _build_follow_up_messages(conversation_turns, follow_up_query)
+    try:
+        completion = await client.beta.chat.completions.parse(
+            model="gpt-4o-mini",
+            temperature=0.3,
+            messages=messages,
             response_format=ParsedFlightQuery,
         )
     except APITimeoutError:

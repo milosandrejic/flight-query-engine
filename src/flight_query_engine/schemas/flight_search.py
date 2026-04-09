@@ -21,9 +21,6 @@ class FlightSearchRequest(BaseModel):
     query: str = Field(
         ..., min_length=1, max_length=500, description="Natural language flight search query",
     )
-    user_id: uuid.UUID | None = Field(
-        None, description="Optional user identifier for search history",
-    )
 
 
 # --- Parsed query (returned by OpenAI structured output) ---
@@ -86,6 +83,20 @@ class SearchMetadata(BaseModel):
 
 
 class FlightSearchResponse(BaseModel):
+    session_id: str
+    parsed_query: ParsedFlightQuery
+    results: list[FlightResult]
+    metadata: SearchMetadata
+
+
+class FollowUpRequest(BaseModel):
+    query: str = Field(
+        ..., min_length=1, max_length=500, description="Follow-up query to refine the search",
+    )
+
+
+class FollowUpResponse(BaseModel):
+    session_id: str
     parsed_query: ParsedFlightQuery
     results: list[FlightResult]
     metadata: SearchMetadata

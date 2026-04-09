@@ -9,6 +9,7 @@ from src.flight_query_engine.schemas.flight_search import (
     FlightSegment,
     Price,
 )
+from src.flight_query_engine.services.session_store import ConversationTurn, SessionData
 
 
 @pytest.fixture()
@@ -50,11 +51,17 @@ class TestSearchEndpoint:
                 new_callable=AsyncMock,
                 return_value=[mock_result],
             ),
+            patch(
+                "src.flight_query_engine.api.routes.flight_search.create_session",
+                new_callable=AsyncMock,
+                return_value="test-session-id",
+            ),
         ):
             resp = await test_client.post("/search", json={"query": "NYC to London"})
 
         assert resp.status_code == 200
         body = resp.json()
+        assert body["session_id"] == "test-session-id"
         assert body["parsed_query"]["origin"] == "JFK"
         assert len(body["results"]) == 1
         assert body["results"][0]["price"]["amount"] == 450.0
@@ -72,12 +79,19 @@ class TestSearchEndpoint:
                 new_callable=AsyncMock,
                 return_value=[],
             ),
+            patch(
+                "src.flight_query_engine.api.routes.flight_search.create_session",
+                new_callable=AsyncMock,
+                return_value="test-session-id",
+            ),
         ):
             resp = await test_client.post("/search", json={"query": "NYC to London"})
 
         assert resp.status_code == 200
-        assert resp.json()["results"] == []
-        assert resp.json()["metadata"]["results_count"] == 0
+        body = resp.json()
+        assert body["session_id"] == "test-session-id"
+        assert body["results"] == []
+        assert body["metadata"]["results_count"] == 0
 
 
 class TestErrorResponses:
@@ -168,3 +182,112 @@ class TestHealthEndpoint:
         resp = await test_client.get("/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+
+
+class TestFollowUpEndpoint:
+    async def test_follow_up_success(self, test_client, simple_query, follow_up_query):
+        session = SessionData(
+            session_id="sess-123",
+            turns=[ConversationTurn(user_query="NYC to London", parsed_query=simple_query)],
+        )
+        with (
+            patch(
+                "src.flight_query_engine.api.routes.flight_search.get_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "src.flight_query_engine.api.routes.flight_search.parse_follow_up_query",
+                new_callable=AsyncMock,
+                return_value=follow_up_query,
+            ),
+            patch(
+                "src.flight_query_engine.api.routes.flight_search.search_flights",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                "src.flight_query_engine.api.routes.flight_search.add_turn",
+                new_callable=AsyncMock,
+            ),
+        ):
+            resp = await test_client.post(
+                "/search/follow-up/sess-123", json={"query": "make it cheaper"},
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["session_id"] == "sess-123"
+        assert body["parsed_query"]["sort_by"] == "price"
+        assert body["parsed_query"]["origin"] == "JFK"
+
+    async def test_follow_up_session_not_found(self, test_client):
+        with patch(
+            "src.flight_query_engine.api.routes.flight_search.get_session",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            resp = await test_client.post(
+                "/search/follow-up/nonexistent", json={"query": "make it cheaper"},
+            )
+
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["type"] == "session_error"
+        assert "not found" in body["message"].lower()
+
+    async def test_follow_up_empty_query(self, test_client):
+        resp = await test_client.post(
+            "/search/follow-up/sess-123", json={"query": ""},
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["type"] == "validation_error"
+
+    async def test_follow_up_chain(self, test_client, simple_query, follow_up_query):
+        """Two follow-ups in sequence on the same session."""
+        session_turn1 = SessionData(
+            session_id="sess-123",
+            turns=[ConversationTurn(user_query="NYC to London", parsed_query=simple_query)],
+        )
+        session_turn2 = SessionData(
+            session_id="sess-123",
+            turns=[
+                ConversationTurn(user_query="NYC to London", parsed_query=simple_query),
+                ConversationTurn(user_query="make it cheaper", parsed_query=follow_up_query),
+            ],
+        )
+
+        mock_get_session = AsyncMock(side_effect=[session_turn1, session_turn2])
+
+        with (
+            patch(
+                "src.flight_query_engine.api.routes.flight_search.get_session",
+                mock_get_session,
+            ),
+            patch(
+                "src.flight_query_engine.api.routes.flight_search.parse_follow_up_query",
+                new_callable=AsyncMock,
+                return_value=follow_up_query,
+            ),
+            patch(
+                "src.flight_query_engine.api.routes.flight_search.search_flights",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                "src.flight_query_engine.api.routes.flight_search.add_turn",
+                new_callable=AsyncMock,
+            ),
+        ):
+            resp1 = await test_client.post(
+                "/search/follow-up/sess-123", json={"query": "make it cheaper"},
+            )
+            resp2 = await test_client.post(
+                "/search/follow-up/sess-123", json={"query": "only direct flights"},
+            )
+
+        assert resp1.status_code == 200
+        assert resp2.status_code == 200
+        assert resp1.json()["session_id"] == "sess-123"
+        assert resp2.json()["session_id"] == "sess-123"
