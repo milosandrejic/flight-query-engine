@@ -13,6 +13,7 @@ dependencies = [
     "httpx>=0.28.0",
     "openai>=1.60.0",
     "structlog>=24.4.0",
+    "redis[hiredis]>=5.0.0",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +24,7 @@ dev = [
     "httpx>=0.28.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
+    "fakeredis[lua]>=2.26.0",
 ]
 
 [tool.ruff]

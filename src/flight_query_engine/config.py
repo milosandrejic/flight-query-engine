@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     port: int = 8000
     log_level: str = Field(default="info")
 
+    # Redis
+    redis_url: str = "redis://localhost:6379"
+    session_ttl_seconds: int = 1800  # 30 minutes
+
     @property
     def database_url(self) -> str:
         return (

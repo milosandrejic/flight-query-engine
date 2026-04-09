@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from src.flight_query_engine.api.routes.flight_search import router as flight_search_router
 from src.flight_query_engine.config import settings
 from src.flight_query_engine.exceptions import ConfigError, FlightQueryEngineError
+from src.flight_query_engine.services.session_store import close_redis, init_redis
 
 
 @asynccontextmanager
@@ -17,7 +18,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         raise ConfigError("OPENAI_API_KEY is not set")
     if not settings.duffel_api_key:
         raise ConfigError("DUFFEL_API_KEY is not set")
-    yield
+    await init_redis()
+    try:
+        yield
+    finally:
+        await close_redis()
 
 app = FastAPI(
     title="Flight Query Engine",
