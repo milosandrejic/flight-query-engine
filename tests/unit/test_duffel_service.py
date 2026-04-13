@@ -96,6 +96,7 @@ class TestTransformOffer:
         assert result.segments[0].origin == "JFK"
         assert result.segments[0].destination == "LHR"
         assert result.segments[0].carrier == "BA"
+        assert result.segments[0].carrier_name == "British Airways"
         assert result.segments[0].flight_number == "178"
         assert result.total_duration == 420
         assert result.stops == 0

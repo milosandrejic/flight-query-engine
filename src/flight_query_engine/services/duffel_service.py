@@ -110,6 +110,7 @@ def _transform_offer(offer: dict) -> FlightResult:
             departing_at=segment["departing_at"],
             arriving_at=segment["arriving_at"],
             carrier=segment.get("marketing_carrier", {}).get("iata_code", ""),
+            carrier_name=segment.get("marketing_carrier", {}).get("name"),
             flight_number=segment.get("marketing_carrier_flight_number", ""),
             duration=segment.get("duration"),
         )
@@ -226,7 +227,9 @@ def _transform_offer_details(offer: dict) -> OfferDetailsResponse:
         segments = [
             OfferSliceSegment(
                 origin=seg["origin"]["iata_code"],
+                origin_city_name=seg.get("origin", {}).get("city_name"),
                 destination=seg["destination"]["iata_code"],
+                destination_city_name=seg.get("destination", {}).get("city_name"),
                 departing_at=seg["departing_at"],
                 arriving_at=seg["arriving_at"],
                 carrier=seg.get("marketing_carrier", {}).get("iata_code", ""),
@@ -246,14 +249,24 @@ def _transform_offer_details(offer: dict) -> OfferDetailsResponse:
             ),
         )
 
+    default_baggages = [
+        BaggageAllowance(type="carry_on", quantity=1),
+        BaggageAllowance(type="checked", quantity=1, max_weight_kg=23.0),
+    ]
+
     passengers = []
     for p in offer.get("passengers", []):
         baggages = [
-            BaggageAllowance(type=b["type"], quantity=b["quantity"])
+            BaggageAllowance(
+                type=b["type"],
+                quantity=b["quantity"],
+                description=b.get("description"),
+                max_weight_kg=float(b["max_weight_kg"]) if b.get("max_weight_kg") else None,
+            )
             for b in p.get("baggages", [])
         ]
         passengers.append(
-            OfferPassenger(id=p["id"], type=p.get("type", "adult"), baggages=baggages),
+            OfferPassenger(id=p["id"], type=p.get("type", "adult"), baggages=baggages or default_baggages),
         )
 
     tax_amount = float(offer["tax_amount"]) if offer.get("tax_amount") else None

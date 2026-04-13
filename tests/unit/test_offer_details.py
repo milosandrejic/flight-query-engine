@@ -38,8 +38,8 @@ MOCK_FULL_OFFER = {
             "duration": "PT7H00M",
             "segments": [
                 {
-                    "origin": {"iata_code": "JFK"},
-                    "destination": {"iata_code": "LHR"},
+                    "origin": {"iata_code": "JFK", "city_name": "New York"},
+                    "destination": {"iata_code": "LHR", "city_name": "London"},
                     "departing_at": "2026-06-15T10:00:00",
                     "arriving_at": "2026-06-15T22:00:00",
                     "marketing_carrier": {"iata_code": "BA", "name": "British Airways"},
@@ -55,8 +55,8 @@ MOCK_FULL_OFFER = {
             "id": "pas_001",
             "type": "adult",
             "baggages": [
-                {"type": "carry_on", "quantity": 1},
-                {"type": "checked", "quantity": 1},
+                {"type": "carry_on", "quantity": 1, "description": "1 personal item + 1 carry-on bag (8kg)", "max_weight_kg": "8.0"},
+                {"type": "checked", "quantity": 1, "description": "1 bag (23kg)", "max_weight_kg": "23.0"},
             ],
         },
     ],
@@ -108,6 +108,8 @@ class TestTransformOfferDetails:
         seg = s.segments[0]
         assert seg.carrier == "BA"
         assert seg.carrier_name == "British Airways"
+        assert seg.origin_city_name == "New York"
+        assert seg.destination_city_name == "London"
         assert seg.flight_number == "178"
         assert seg.aircraft == "Boeing 777-200"
 
@@ -119,7 +121,11 @@ class TestTransformOfferDetails:
         assert p.type == "adult"
         assert len(p.baggages) == 2
         assert p.baggages[0].type == "carry_on"
+        assert p.baggages[0].description == "1 personal item + 1 carry-on bag (8kg)"
+        assert p.baggages[0].max_weight_kg == 8.0
         assert p.baggages[1].type == "checked"
+        assert p.baggages[1].description == "1 bag (23kg)"
+        assert p.baggages[1].max_weight_kg == 23.0
 
     def test_metadata_fields(self):
         result = _transform_offer_details(MOCK_FULL_OFFER)
@@ -144,6 +150,20 @@ class TestTransformOfferDetails:
         ]
         result = _transform_offer_details(offer)
         assert result.slices[0].segments[0].aircraft is None
+
+    def test_empty_baggages_get_defaults(self):
+        offer = {**MOCK_FULL_OFFER}
+        offer["passengers"] = [
+            {"id": "pas_001", "type": "adult", "baggages": []},
+        ]
+        result = _transform_offer_details(offer)
+        p = result.passengers[0]
+        assert len(p.baggages) == 2
+        assert p.baggages[0].type == "carry_on"
+        assert p.baggages[0].quantity == 1
+        assert p.baggages[1].type == "checked"
+        assert p.baggages[1].quantity == 1
+        assert p.baggages[1].max_weight_kg == 23.0
 
 
 class TestGetOfferErrors:

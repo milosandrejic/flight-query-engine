@@ -60,6 +60,7 @@ class FlightSegment(BaseModel):
     departing_at: str
     arriving_at: str
     carrier: str
+    carrier_name: str | None = None
     flight_number: str
     duration: str | None = None
 
@@ -119,6 +120,8 @@ class OfferConditions(BaseModel):
 class BaggageAllowance(BaseModel):
     type: str
     quantity: int
+    description: str | None = None
+    max_weight_kg: float | None = None
 
 
 class OfferPassenger(BaseModel):
@@ -129,7 +132,9 @@ class OfferPassenger(BaseModel):
 
 class OfferSliceSegment(BaseModel):
     origin: str
+    origin_city_name: str | None = None
     destination: str
+    destination_city_name: str | None = None
     departing_at: str
     arriving_at: str
     carrier: str

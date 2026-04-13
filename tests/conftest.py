@@ -55,7 +55,7 @@ MOCK_DUFFEL_OFFER = {
                     "destination": {"iata_code": "LHR"},
                     "departing_at": "2026-06-15T10:00:00",
                     "arriving_at": "2026-06-15T22:00:00",
-                    "marketing_carrier": {"iata_code": "BA"},
+                    "marketing_carrier": {"iata_code": "BA", "name": "British Airways"},
                     "marketing_carrier_flight_number": "178",
                     "duration": "PT7H00M",
                 },
