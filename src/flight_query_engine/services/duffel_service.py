@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import httpx
 
 from src.flight_query_engine.config import settings
-from src.flight_query_engine.exceptions import DuffelServiceError, OfferNotFoundError
+from src.flight_query_engine.exceptions import DuffelServiceError, OfferExpiredError, OfferNotFoundError
 from src.flight_query_engine.schemas.flight_search import (
     BaggageAllowance,
     FlightResult,
@@ -300,6 +300,8 @@ async def get_offer(offer_id: str) -> OfferDetailsResponse:
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
             raise OfferNotFoundError() from None
+        if exc.response.status_code == 422:
+            raise OfferExpiredError() from None
         if exc.response.status_code == 401:
             raise DuffelServiceError("Flight search is misconfigured") from None
         raise DuffelServiceError("Flight search temporarily unavailable") from exc

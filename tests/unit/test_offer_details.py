@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from src.flight_query_engine.exceptions import DuffelServiceError, OfferNotFoundError
+from src.flight_query_engine.exceptions import DuffelServiceError, OfferExpiredError, OfferNotFoundError
 from src.flight_query_engine.services.duffel_service import (
     _parse_condition,
     _transform_offer_details,
@@ -195,6 +195,23 @@ class TestGetOfferErrors:
 
             with pytest.raises(OfferNotFoundError):
                 await get_offer("off_nonexistent")
+
+    async def test_422_raises_offer_expired(self):
+        with patch(
+            "src.flight_query_engine.services.duffel_service.httpx.AsyncClient",
+        ) as mock_cls:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 422
+            mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "Unprocessable Entity", request=MagicMock(), response=mock_resp,
+            )
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_resp)
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(OfferExpiredError):
+                await get_offer("off_expired")
 
     async def test_401_raises_misconfigured(self):
         with patch(

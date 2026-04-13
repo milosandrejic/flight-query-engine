@@ -41,3 +41,10 @@ class OfferNotFoundError(FlightQueryEngineError):
 
     def __init__(self, message: str = "Offer not found or expired"):
         super().__init__(message, error_type="offer_error", status_code=404)
+
+
+class OfferExpiredError(FlightQueryEngineError):
+    """Requested offer is no longer available."""
+
+    def __init__(self, message: str = "This offer has expired. Please search again for updated availability."):
+        super().__init__(message, error_type="offer_expired", status_code=410)
